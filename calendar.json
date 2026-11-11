@@ -30,6 +30,14 @@
       "draft": "6af4a54366d5d3cdc327a45a"
     },
     {
+      "id": "2026-11-25-facturation-electronique",
+      "at": "2026-11-25T08:30",
+      "type": "article",
+      "slug": "facturation-electronique",
+      "title": "Facturation électronique obligatoire : ce qui change pour les PME",
+      "draft": "6af4a727d47f9dc72b80611e"
+    },
+    {
       "id": "2026-11-27-conseil-a46f",
       "at": "2026-11-27T08:30",
       "type": "post",
@@ -44,6 +52,14 @@
       "draft": "6af4a54766d5d3cdc327a480"
     },
     {
+      "id": "2026-12-02-vibe-coding",
+      "at": "2026-12-02T08:30",
+      "type": "article",
+      "slug": "vibe-coding",
+      "title": "Vibe coding : c'est quoi, et comment l'utiliser sérieusement",
+      "draft": "6af4a72ad47f9dc72b806163"
+    },
+    {
       "id": "2026-12-04-conseil-b5e2",
       "at": "2026-12-04T08:30",
       "type": "post",
@@ -56,6 +72,14 @@
       "type": "post",
       "title": "Preuve : Cookie Club, boutique et CRM de production",
       "draft": "6af4a54b2911e9c80481b5ec"
+    },
+    {
+      "id": "2026-12-09-no-code-low-code",
+      "at": "2026-12-09T08:30",
+      "type": "article",
+      "slug": "no-code-low-code",
+      "title": "No-code, low-code ou sur mesure : comment choisir ?",
+      "draft": "6af4a72ed47f9dc72b806184"
     },
     {
       "id": "2026-12-11-preuve-a4c8",

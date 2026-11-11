@@ -16,13 +16,26 @@ News topics need about an hour of samples before they can alert, so the first ru
 
 Topics, terms and thresholds are the constants at the top of `buzz.mjs`.
 
-## LinkedIn posts approved from Telegram
+## Publication calendar (`publisher.mjs`)
 
-`linkedin.mjs` runs in the same job. It sends every LinkedIn draft found in Zernio to Telegram, then reads the
-replies: `OUI` (as a reply to that message) publishes it, `NON` deletes the draft. With a single pending draft,
-a plain `OUI` or `NON` is enough. Only messages from `TELEGRAM_CHAT_ID` are taken into account.
+`calendar.json` lists the scheduled publications, in Paris local time:
 
-In a draft, the text after a `[commentaire]` line is published as the first comment, where the link goes.
+```json
+{ "id": "2026-11-18-erp-ou-crm", "at": "2026-11-18T08:30", "type": "article",
+  "slug": "erp-ou-crm", "title": "…", "draft": "<Zernio draft id>" }
+```
+
+- When an entry's time comes, its LinkedIn draft is sent to Telegram.
+- `OUI` on a `post` publishes the draft. `OUI` on an `article` adds the slug to `published.json`
+  (read by the site before each build, scheduled guides stay hidden otherwise), calls the Vercel
+  deploy hook, and publishes the draft once `kadyostudio.com/guides/<slug>` answers (redeploys up to 3 times).
+- `NON` sets the entry aside; its draft is kept for rescheduling.
+- Zernio LinkedIn drafts that are not in the calendar (news posts) are sent right away.
+- `/calendrier` lists the next four weeks; a recap of the week is sent on Monday from 07:00.
+
+Answer by replying to the message concerned; a plain `OUI`/`NON` works when only one item is waiting.
+Only messages from `TELEGRAM_CHAT_ID` are read. In a draft, the text after a `[commentaire]` line is
+published as the first comment, where the link goes.
 
 ## State
 
@@ -35,7 +48,8 @@ Repository secrets:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-- `ZERNIO_API_KEY` (LinkedIn approval; the step is skipped without it)
+- `ZERNIO_API_KEY` (publication calendar; the step is skipped without it)
+- `VERCEL_DEPLOY_HOOK` (deploy hook of the site, used when an article is approved)
 
 ## Local run
 

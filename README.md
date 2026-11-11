@@ -16,6 +16,14 @@ News topics need about an hour of samples before they can alert, so the first ru
 
 Topics, terms and thresholds are the constants at the top of `buzz.mjs`.
 
+## LinkedIn posts approved from Telegram
+
+`linkedin.mjs` runs in the same job. It sends every LinkedIn draft found in Zernio to Telegram, then reads the
+replies: `OUI` (as a reply to that message) publishes it, `NON` deletes the draft. With a single pending draft,
+a plain `OUI` or `NON` is enough. Only messages from `TELEGRAM_CHAT_ID` are taken into account.
+
+In a draft, the text after a `[commentaire]` line is published as the first comment, where the link goes.
+
 ## State
 
 `state.json` (per-topic article counts and already-sent alerts) is carried from one run to the next with the
@@ -27,6 +35,7 @@ Repository secrets:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+- `ZERNIO_API_KEY` (LinkedIn approval; the step is skipped without it)
 
 ## Local run
 

@@ -46,7 +46,8 @@ GitHub Actions cache. If the cache is evicted, the detector simply rebuilds its 
 
 Repository secrets:
 
-- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_BOT_TOKEN` (publication bot: calendar and LinkedIn approvals)
+- `ACTU_BOT_TOKEN` (news bot @actu_kadyo_bot: buzz alerts; falls back to `TELEGRAM_BOT_TOKEN`)
 - `TELEGRAM_CHAT_ID`
 - `ZERNIO_API_KEY` (publication calendar; the step is skipped without it)
 - `VERCEL_DEPLOY_HOOK` (deploy hook of the site, used when an article is approved)
@@ -59,4 +60,5 @@ DRY_RUN=1 node buzz.mjs   # prints alerts instead of sending them
 
 Requires Node 24 (built-in `fetch`), no dependencies.
 
-GitHub may delay scheduled runs by a few minutes when its runners are busy.
+GitHub's schedule is best effort (runs can be hours late): the site's Vercel Cron (`/api/cron/buzz`) starts the
+workflow every 10 minutes through `workflow_dispatch`, the schedule stays as a fallback.

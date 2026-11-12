@@ -182,7 +182,7 @@ async function sendTelegram(text) {
     console.log(`--- alert ---\n${text}\n`);
     return;
   }
-  const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${process.env.ACTU_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

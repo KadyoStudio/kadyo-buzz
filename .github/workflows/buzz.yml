@@ -30,6 +30,7 @@ jobs:
       - name: Check sources
         run: node buzz.mjs
         env:
+          ACTU_BOT_TOKEN: ${{ secrets.ACTU_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       - name: Publication calendar

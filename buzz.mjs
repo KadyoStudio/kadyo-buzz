@@ -190,6 +190,12 @@ async function sendTelegram(text) {
       text,
       parse_mode: "HTML",
       disable_web_page_preview: true,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "✍️ Post LinkedIn", callback_data: "draft:post" },
+          { text: "📰 Brève", callback_data: "draft:breve" },
+        ]],
+      },
     }),
   });
   if (!res.ok) throw new Error(`telegram ${res.status}: ${await res.text()}`);

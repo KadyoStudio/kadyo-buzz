@@ -175,10 +175,18 @@ for (const entry of calendar) {
 
 // ---------- announce drafts outside the calendar (news posts) ----------
 
+// Drafts titled "calendrier…" belong to the calendar (created before their entry is pushed), and any
+// draft younger than DRAFT_GRACE waits one more run, so a calendar draft is never announced as news.
+const DRAFT_GRACE = 20 * 60 * 1000;
 const scheduledDrafts = new Set(calendar.map((e) => e.draft));
 const list = await zernio("GET", "/posts?status=draft&limit=50");
 const adHoc = (list?.posts ?? list?.data ?? []).filter(
-  (p) => p.status === "draft" && !scheduledDrafts.has(idOf(p)) && (p.platforms ?? []).some((pl) => pl.platform === "linkedin"),
+  (p) =>
+    p.status === "draft" &&
+    !scheduledDrafts.has(idOf(p)) &&
+    !/^calendrier/i.test(p.title ?? "") &&
+    !(Date.now() - Date.parse(p.createdAt) < DRAFT_GRACE) &&
+    (p.platforms ?? []).some((pl) => pl.platform === "linkedin"),
 );
 const adHocIds = new Set(adHoc.map(idOf));
 for (const id of Object.keys(state.drafts)) if (!adHocIds.has(id)) delete state.drafts[id];

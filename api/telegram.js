@@ -1,10 +1,12 @@
-// Telegram webhook of the news bot: drafts a LinkedIn post from an alert, revises it on
+// Telegram webhook of the news bot: drafts a LinkedIn post or news brief from an alert, revises it on
 // Kevin's replies and publishes it through Zernio on OUI. Drafts live in Vercel Blob,
 // never in Zernio, so the publication calendar (publisher.mjs) never sees them.
 import { waitUntil } from "@vercel/functions";
 import { get, put } from "@vercel/blob";
 import { write, parse } from "../lib/writer.js";
-import { generatePhoto, compose } from "../lib/visual.js";
+import { generatePhoto, composeCard } from "../lib/visual.js";
+import { personPhoto, companyLogo } from "../lib/media.js";
+import { checkSource } from "../lib/sources.js";
 
 const { ACTU_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET, ZERNIO_API_KEY } = process.env;
 const TELEGRAM = `https://api.telegram.org/bot${ACTU_BOT_TOKEN}`;
@@ -117,23 +119,43 @@ async function recentPosts() {
 
 // ---------- drafts ----------
 
-function render(version, number) {
-  if (!version.post) return `🤔 <b>Pas de post proposé</b>\n\n${escapeHtml(version.note)}`;
+const FORMATS = { post: "Post LinkedIn", breve: "Brève" };
+const formatOf = (instruction = "") => (/br[eè]ve/i.test(instruction) ? "breve" : "post");
+
+const parisDate = () =>
+  new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short", year: "numeric" }).format(new Date());
+
+function render(version, number, format) {
+  if (!version.post) return `🤔 <b>Pas de publication proposée</b>\n\n${escapeHtml(version.note)}`;
+  const source = version.source.ok
+    ? `✅ Source reconnue : ${escapeHtml(version.source.label)}`
+    : `⛔ Source hors liste (${escapeHtml(version.source.label)}) : publication bloquée`;
   return (
-    `📝 <b>Post LinkedIn · version ${number}</b>\n\n${escapeHtml(version.post)}` +
+    `📝 <b>${FORMATS[format]} · version ${number}</b>\n\n${escapeHtml(version.post)}` +
     (version.comment ? `\n\n💬 <b>Premier commentaire</b>\n${escapeHtml(version.comment)}` : "") +
+    `\n\n${source}` +
     (version.note ? `\n\n🗒️ <i>${escapeHtml(version.note)}</i>` : "") +
     `\n\n<i>Réponds à ce message pour le modifier, ou OUI pour publier.</i>`
   );
 }
 
-/** Reuses the previous visual when the hook and photo prompt are unchanged, otherwise makes a new one. */
+const sameCard = (a, b) => ["headline", "fact", "person", "company", "scene"].every((k) => a?.[k] === b?.[k]);
+
+/** Builds the card (free-licence photo of the person, or a generated scene, and the official logo); reused while its fields are unchanged. */
 async function makeVisual(draft, version, index) {
   const previous = draft.versions.findLast((v) => v.image);
-  if (previous && previous.hook === version.hook && previous.imagePrompt === version.imagePrompt) {
-    return { path: previous.image, fresh: false };
+  if (previous && sameCard(previous.card, version.card)) return { path: previous.image, fresh: false };
+
+  const { headline, fact, person, company, scene } = version.card;
+  const portrait = person ? await personPhoto(person).catch(() => null) : null;
+  let photo = portrait?.data;
+  let credit = portrait?.credit;
+  if (!photo && scene) {
+    photo = await generatePhoto(scene);
+    credit = "Illustration générée par IA";
   }
-  const image = await compose(await generatePhoto(version.imagePrompt), version.hook);
+  const logo = company ? await companyLogo(company).catch(() => null) : null;
+  const image = await composeCard({ kicker: `Actu · ${parisDate()}`, headline, fact, photo, logo, credit });
   const path = `images/${draft.id}-${index}.jpg`;
   await store(path, image, "image/jpeg");
   return { path, image, fresh: true };
@@ -144,9 +166,10 @@ async function writeVersion(draft, replyTo) {
   draft.messages.push(...added);
   const version = parse(text);
   const index = draft.versions.length;
+  version.source = checkSource(version.comment, version.card.company);
   let visual;
   if (version.post) {
-    if (!version.hook || !version.imagePrompt) {
+    if (!version.card.headline || !version.card.fact) {
       version.imageError = "le visuel n'a pas été décrit";
     } else {
       try {
@@ -166,28 +189,29 @@ async function writeVersion(draft, replyTo) {
     const photo = await sendPhoto(visual.image, `Visuel · version ${index + 1}`, replyTo);
     await store(`messages/${photo.message_id}.json`, pointer);
   }
-  if (version.imageError) {
-    version.note = `${version.note ? `${version.note}\n` : ""}⚠️ Visuel indisponible (${version.imageError}). Réponds « refais l'image » pour réessayer.`;
-  }
+  const shown = version.imageError
+    ? { ...version, note: `${version.note ? `${version.note}\n` : ""}⚠️ Visuel indisponible (${version.imageError}). Réponds « refais l'image » pour réessayer.` }
+    : version;
   const keyboard = version.post
     ? [[
         { text: "✅ Publier", callback_data: `pub:${draft.id}:${index}` },
         { text: "❌ Abandonner", callback_data: `drop:${draft.id}` },
       ]]
     : undefined;
-  const sent = await say(render(version, index + 1), replyTo, keyboard);
+  const sent = await say(render(shown, index + 1, draft.format), replyTo, keyboard);
   await store(`messages/${sent.message_id}.json`, pointer);
 }
 
-async function startDraft(alert, instruction) {
-  await say("✍️ Je lis les articles et je rédige le post (environ une minute)…", alert.message_id);
+async function startDraft(alert, instruction, format = formatOf(instruction)) {
+  await say(`✍️ Je lis les articles et je rédige ${format === "breve" ? "la brève" : "le post"} (une à deux minutes)…`, alert.message_id);
   const links = linksOf(alert);
   const request =
-    `Alerte reçue :\n\n${alert.text ?? alert.caption ?? ""}` +
+    `Format : ${FORMATS[format]}\n\nAlerte reçue :\n\n${alert.text ?? alert.caption ?? ""}` +
     (links.length ? `\n\nLiens de l'alerte :\n${links.join("\n")}` : "") +
     (instruction ? `\n\nConsigne de Kevin : ${instruction}` : "");
   const draft = {
     id: crypto.randomUUID(),
+    format,
     status: "open",
     createdAt: new Date().toISOString(),
     examples: await recentPosts(),
@@ -204,7 +228,7 @@ async function openDraft(id, replyTo) {
     return null;
   }
   if (draft.status !== "open") {
-    await say(draft.status === "published" ? "Ce post est déjà publié." : "Ce brouillon a été abandonné.", replyTo);
+    await say(draft.status === "published" ? "Ce brouillon est déjà publié." : "Ce brouillon a été abandonné.", replyTo);
     return null;
   }
   return draft;
@@ -214,6 +238,7 @@ async function revise(id, instruction, replyTo) {
   const draft = await openDraft(id, replyTo);
   if (!draft) return;
   await say("✍️ Je modifie…", replyTo);
+  if (/br[eè]ve/i.test(instruction)) draft.format = "breve";
   draft.messages.push({ role: "user", content: `Modification demandée par Kevin : ${instruction}` });
   await writeVersion(draft, replyTo);
 }
@@ -222,7 +247,10 @@ async function publish(id, index, replyTo) {
   const draft = await openDraft(id, replyTo);
   if (!draft) return;
   const version = draft.versions[index];
-  if (!version?.post) return say("Cette version ne contient pas de post à publier.", replyTo);
+  if (!version?.post) return say("Cette version ne contient rien à publier.", replyTo);
+  if (!version.source?.ok) {
+    return say("Publication bloquée : la source n'est pas dans la liste des sources fiables. Demande une autre source au bot, ou demande à Claude d'ajouter ce média à la liste.", replyTo);
+  }
   if (!version.image) return say("Pas de visuel pour cette version : réponds « refais l'image » au brouillon.", replyTo);
   const imageUrl = await uploadImage(await loadBytes(version.image));
   const created = await zernio("POST", "/posts", {
@@ -252,6 +280,11 @@ async function drop(id, replyTo) {
   await say("🗑️ Brouillon abandonné.", replyTo);
 }
 
+const FORMAT_BUTTONS = [[
+  { text: "✍️ Post LinkedIn", callback_data: "draft:post" },
+  { text: "📰 Brève", callback_data: "draft:breve" },
+]];
+
 // ---------- routing ----------
 
 async function handle(update) {
@@ -262,7 +295,8 @@ async function handle(update) {
     await clearButtons(query.message);
     const [action, id, index] = (query.data ?? "").split(":");
     const replyTo = query.message.message_id;
-    if (action === "draft") return startDraft(query.message);
+    // Format buttons sit on the alert itself, or on the bot's question below a forwarded alert or a link.
+    if (action === "draft") return startDraft(query.message.reply_to_message ?? query.message, "", id === "breve" ? "breve" : "post");
     if (action === "pub") return publish(id, Number(index), replyTo);
     if (action === "drop") return drop(id, replyTo);
     return;
@@ -272,8 +306,11 @@ async function handle(update) {
   if (!message?.text || String(message.chat.id) !== TELEGRAM_CHAT_ID) return;
   const source = message.reply_to_message;
   if (!source) {
-    if (linksOf(message).length) return startDraft(message);
-    await say("Envoie-moi un lien ou transfère une alerte pour en tirer un post. Pour modifier un brouillon, réponds-lui.", message.message_id);
+    if (linksOf(message).length) {
+      await say("Quel format ?", message.message_id, FORMAT_BUTTONS);
+      return;
+    }
+    await say("Envoie-moi un lien ou transfère une alerte pour en tirer une publication. Pour modifier un brouillon, réponds-lui.", message.message_id);
     return;
   }
   const pointer = await load(`messages/${source.message_id}.json`);

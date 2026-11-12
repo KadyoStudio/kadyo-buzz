@@ -7,6 +7,7 @@ import { write, parse } from "../lib/writer.js";
 import { generatePhoto, composeCard } from "../lib/visual.js";
 import { personPhoto, companyLogo } from "../lib/media.js";
 import { checkSource } from "../lib/sources.js";
+import { resolveLink } from "../lib/gnews.js";
 
 const { ACTU_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET, ZERNIO_API_KEY } = process.env;
 const TELEGRAM = `https://api.telegram.org/bot${ACTU_BOT_TOKEN}`;
@@ -204,7 +205,7 @@ async function writeVersion(draft, replyTo) {
 
 async function startDraft(alert, instruction, format = formatOf(instruction)) {
   await say(`✍️ Je lis les articles et je rédige ${format === "breve" ? "la brève" : "le post"} (une à deux minutes)…`, alert.message_id);
-  const links = linksOf(alert);
+  const links = await Promise.all(linksOf(alert).map(resolveLink));
   const request =
     `Format : ${FORMATS[format]}\n\nAlerte reçue :\n\n${alert.text ?? alert.caption ?? ""}` +
     (links.length ? `\n\nLiens de l'alerte :\n${links.join("\n")}` : "") +

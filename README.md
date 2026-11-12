@@ -37,6 +37,19 @@ Answer by replying to the message concerned; a plain `OUI`/`NON` works when only
 Only messages from `TELEGRAM_CHAT_ID` are read. In a draft, the text after a `[commentaire]` line is
 published as the first comment, where the link goes.
 
+## LinkedIn posts from alerts (`api/telegram.js`, Vercel project `kadyo-buzz`)
+
+The news bot's webhook. Each buzz alert carries a **Préparer un post LinkedIn** button; replying to an alert
+with an instruction works too. Claude (`lib/writer.js`, instructions in `lib/prompt.js`) finds and reads the
+source articles, then writes a post in Kevin's voice, using his last published posts as examples.
+Replying to a draft revises it; **Publier** or `OUI` publishes that version through Zernio, with the source as
+first comment. Drafts are stored in a private Vercel Blob store and never in Zernio, so `publisher.mjs` never
+sees them. Only messages from `TELEGRAM_CHAT_ID` are handled.
+
+Vercel environment variables: `ACTU_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`,
+`ZERNIO_API_KEY`, `BLOB_READ_WRITE_TOKEN` (set by the Blob store). After a change of domain, point the webhook at it:
+`curl -H "Authorization: Bearer $TELEGRAM_WEBHOOK_SECRET" https://<domain>/api/telegram`.
+
 ## State
 
 `state.json` (per-topic article counts and already-sent alerts) is carried from one run to the next with the

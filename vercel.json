@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/telegram.js": { "maxDuration": 300 }
+    "api/telegram.js": { "maxDuration": 300, "includeFiles": "assets/**" }
   }
 }

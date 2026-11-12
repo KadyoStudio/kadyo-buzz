@@ -1,0 +1,4 @@
+Polices des visuels LinkedIn (lib/visual.js), sous SIL Open Font License 1.1 :
+- Source Serif 4 : Adobe (github.com/adobe-fonts/source-serif)
+- DM Mono : The DM Mono Project Authors (github.com/googlefonts/dm-mono)
+Licence : https://openfontlicense.org

@@ -4,6 +4,7 @@
 import { waitUntil } from "@vercel/functions";
 import { get, put } from "@vercel/blob";
 import { write, parse } from "../lib/writer.js";
+import { generatePhoto, compose } from "../lib/visual.js";
 
 const { ACTU_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET, ZERNIO_API_KEY } = process.env;
 const TELEGRAM = `https://api.telegram.org/bot${ACTU_BOT_TOKEN}`;
@@ -36,6 +37,18 @@ const say = (text, replyTo, keyboard) =>
     ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
   });
 
+async function sendPhoto(image, caption, replyTo) {
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("caption", caption);
+  form.append("photo", new Blob([image], { type: "image/jpeg" }), "visuel.jpg");
+  if (replyTo) form.append("reply_parameters", JSON.stringify({ message_id: replyTo, allow_sending_without_reply: true }));
+  const res = await fetch(`${TELEGRAM}/sendPhoto`, { method: "POST", body: form });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`telegram sendPhoto: ${data.description}`);
+  return data.result;
+}
+
 const clearButtons = (message) =>
   telegram("editMessageReplyMarkup", {
     chat_id: message.chat.id,
@@ -58,12 +71,18 @@ async function load(path) {
   return found ? new Response(found.stream).json() : null;
 }
 
-const store = (path, data) =>
-  put(path, JSON.stringify(data), {
+async function loadBytes(path) {
+  const found = await get(path, { access: "private", useCache: false });
+  if (!found) throw new Error(`fichier introuvable : ${path}`);
+  return Buffer.from(await new Response(found.stream).arrayBuffer());
+}
+
+const store = (path, data, contentType = "application/json") =>
+  put(path, contentType === "application/json" ? JSON.stringify(data) : data, {
     access: "private",
     allowOverwrite: true,
     addRandomSuffix: false,
-    contentType: "application/json",
+    contentType,
   });
 
 // ---------- Zernio ----------
@@ -77,6 +96,17 @@ async function zernio(method, path, body) {
   const text = await res.text();
   if (!res.ok) throw new Error(`zernio ${method} ${path} ${res.status}: ${text.slice(0, 200)}`);
   return text ? JSON.parse(text) : {};
+}
+
+/** Uploads the visual to Zernio's storage and returns its public URL, for mediaItems. */
+async function uploadImage(image) {
+  const { uploadUrl, publicUrl } = await zernio("POST", "/media/presign", {
+    filename: "visuel.jpg",
+    contentType: "image/jpeg",
+  });
+  const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: image });
+  if (!res.ok) throw new Error(`envoi de l'image à Zernio : ${res.status}`);
+  return publicUrl;
 }
 
 async function recentPosts() {
@@ -97,13 +127,48 @@ function render(version, number) {
   );
 }
 
+/** Reuses the previous visual when the hook and photo prompt are unchanged, otherwise makes a new one. */
+async function makeVisual(draft, version, index) {
+  const previous = draft.versions.findLast((v) => v.image);
+  if (previous && previous.hook === version.hook && previous.imagePrompt === version.imagePrompt) {
+    return { path: previous.image, fresh: false };
+  }
+  const image = await compose(await generatePhoto(version.imagePrompt), version.hook);
+  const path = `images/${draft.id}-${index}.jpg`;
+  await store(path, image, "image/jpeg");
+  return { path, image, fresh: true };
+}
+
 async function writeVersion(draft, replyTo) {
   const { added, text } = await write(draft.messages, draft.examples);
   draft.messages.push(...added);
   const version = parse(text);
+  const index = draft.versions.length;
+  let visual;
+  if (version.post) {
+    if (!version.hook || !version.imagePrompt) {
+      version.imageError = "le visuel n'a pas été décrit";
+    } else {
+      try {
+        visual = await makeVisual(draft, version, index);
+        version.image = visual.path;
+      } catch (err) {
+        console.error(err);
+        version.imageError = err.message.slice(0, 200);
+      }
+    }
+  }
   draft.versions.push(version);
-  const index = draft.versions.length - 1;
   await store(`drafts/${draft.id}.json`, draft);
+
+  const pointer = { draft: draft.id, version: index };
+  if (visual?.fresh) {
+    const photo = await sendPhoto(visual.image, `Visuel · version ${index + 1}`, replyTo);
+    await store(`messages/${photo.message_id}.json`, pointer);
+  }
+  if (version.imageError) {
+    version.note = `${version.note ? `${version.note}\n` : ""}⚠️ Visuel indisponible (${version.imageError}). Réponds « refais l'image » pour réessayer.`;
+  }
   const keyboard = version.post
     ? [[
         { text: "✅ Publier", callback_data: `pub:${draft.id}:${index}` },
@@ -111,7 +176,7 @@ async function writeVersion(draft, replyTo) {
       ]]
     : undefined;
   const sent = await say(render(version, index + 1), replyTo, keyboard);
-  await store(`messages/${sent.message_id}.json`, { draft: draft.id, version: index });
+  await store(`messages/${sent.message_id}.json`, pointer);
 }
 
 async function startDraft(alert, instruction) {
@@ -158,8 +223,11 @@ async function publish(id, index, replyTo) {
   if (!draft) return;
   const version = draft.versions[index];
   if (!version?.post) return say("Cette version ne contient pas de post à publier.", replyTo);
+  if (!version.image) return say("Pas de visuel pour cette version : réponds « refais l'image » au brouillon.", replyTo);
+  const imageUrl = await uploadImage(await loadBytes(version.image));
   const created = await zernio("POST", "/posts", {
     content: version.post,
+    mediaItems: [{ url: imageUrl, type: "image" }],
     platforms: [{
       platform: "linkedin",
       accountId: LINKEDIN_ACCOUNT,

@@ -204,7 +204,8 @@ async function handle(update) {
   if (!message?.text || String(message.chat.id) !== TELEGRAM_CHAT_ID) return;
   const source = message.reply_to_message;
   if (!source) {
-    await say("Réponds à une alerte pour en tirer un post, ou à un brouillon pour le modifier.", message.message_id);
+    if (linksOf(message).length) return startDraft(message);
+    await say("Envoie-moi un lien ou transfère une alerte pour en tirer un post. Pour modifier un brouillon, réponds-lui.", message.message_id);
     return;
   }
   const pointer = await load(`messages/${source.message_id}.json`);

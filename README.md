@@ -39,7 +39,7 @@ published as the first comment, where the link goes.
 
 ## LinkedIn posts from alerts (`api/telegram.js`, Vercel project `kadyo-buzz`)
 
-The news bot's webhook. Each buzz alert carries a **Préparer un post LinkedIn** button; replying to an alert
+The news bot's webhook. Each buzz alert carries a **Préparer un post LinkedIn** button; sending a link, forwarding an alert or replying to one
 with an instruction works too. Claude (`lib/writer.js`, instructions in `lib/prompt.js`) finds and reads the
 source articles, then writes a post in Kevin's voice, using his last published posts as examples.
 Replying to a draft revises it; **Publier** or `OUI` publishes that version through Zernio, with the source as
